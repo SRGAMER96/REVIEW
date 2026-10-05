@@ -166,10 +166,17 @@ async function startServer() {
 
   // Auto-start bot on boot only in production (Render) or if explicitly enabled
   const shouldAutoStart = process.env.NODE_ENV === 'production' || !!process.env.RENDER || process.env.AUTO_START_BOT === 'true';
-  const botToken = process.env.BOT_TOKEN || '8949126540:AAHvBJr94_EqsF2R5bkd9y1HqUeJPwYlOB4';
+  
+  // Clean token: strip quotes and whitespace
+  let rawToken = (process.env.BOT_TOKEN || '').trim().replace(/^["']|["']$/g, '');
+  // If Render env var still holds the old revoked token, automatically use the new valid token
+  if (!rawToken || rawToken.includes('AAEcBGaulew5JRcODPSHlAjiT39O-Q0B4v0')) {
+    rawToken = '8949126540:AAHvBJr94_EqsF2R5bkd9y1HqUeJPwYlOB4';
+  }
+  const botToken = rawToken;
 
   if (shouldAutoStart) {
-    console.log('Production environment detected: Starting Telegram bot engine automatically...');
+    console.log(`Production environment detected: Starting Telegram bot engine with token (${botToken.substring(0, 4)}...${botToken.substring(botToken.length - 4)})...`);
     botManager.start({
       token: botToken,
       adminId: Number(process.env.ADMIN_USER_ID) || 8962632792,

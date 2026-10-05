@@ -1332,13 +1332,18 @@ class BotManager {
           }
         } catch (connErr: any) {
           lastErr = connErr;
-          this.addLog('warn', `Telegram handshake attempt ${attempt}/5 failed (${connErr.message || 'Network delay'}). Retrying in 3 seconds...`);
+          const msg = connErr.message || String(connErr);
+          if (msg.includes('401') || msg.includes('Unauthorized')) {
+            this.addLog('error', `401 Unauthorized: Telegram rejected token (${this.state.tokenMasked}). Token is revoked or invalid. Update BOT_TOKEN in Render Environment.`);
+            break;
+          }
+          this.addLog('warn', `Telegram handshake attempt ${attempt}/5 failed (${msg}). Retrying in 3 seconds...`);
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       }
 
       if (!botUser) {
-        throw new Error(`Could not connect to Telegram API: ${lastErr?.message || 'Handshake failed after 5 attempts'}`);
+        throw new Error(`Could not connect to Telegram API: ${lastErr?.message || 'Handshake failed after attempts'}`);
       }
 
       this.state.botInfo = botUser;
