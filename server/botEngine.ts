@@ -589,30 +589,50 @@ class BotManager {
             return;
           }
 
-          // D. Admin Add Work Wizard (EXACTLY 2 STEPS: Link -> Message -> Done/Cancel)
+          // D. Admin Add Work Wizard (3 STEPS: Link -> Message -> Approve Price -> Done/Cancel)
           if (isAdmin(fromId)) {
             if (step === 'ADMIN_ADD_LINK') {
-              currentSession.data.draft.targetLink = rawText;
+              currentSession.data.draft.targetLink = rawText.trim();
               currentSession.step = 'ADMIN_ADD_MESSAGE';
               return ctx.reply(
-                `📍 ${toSansBold('Step 2/2: Enter Task Message / Instructions')}\n\n` +
+                `📍 ${toSansBold('Step 2/3: Enter Task Message / Instructions')}\n\n` +
                   `(Type the review details and instructions that users should follow):`,
                 cancelInputKeyboard
               );
             }
 
             if (step === 'ADMIN_ADD_MESSAGE') {
-              currentSession.data.draft.instructions = rawText;
+              currentSession.data.draft.instructions = rawText.trim();
+              currentSession.step = 'ADMIN_ADD_PRICE';
+              return ctx.reply(
+                `📍 ${toSansBold('Step 3/3: Enter Approve Price / Reward Amount (₹)')}\n\n` +
+                  `💰 ${toSansBold('টাকা / ব্যালেন্স')}: Type how much money will be credited to user's balance upon review approval (e.g. 5, 10, 15, 20):`,
+                cancelInputKeyboard
+              );
+            }
+
+            if (step === 'ADMIN_ADD_PRICE') {
+              const cleaned = rawText.replace(/[^0-9.]/g, '');
+              const price = parseFloat(cleaned);
+              if (isNaN(price) || price <= 0) {
+                return ctx.reply(
+                  `⚠️ Invalid amount! Please enter a valid number for Approve Price (e.g. 10 or 15.50):`,
+                  cancelInputKeyboard
+                );
+              }
+
+              currentSession.data.draft.rewardAmount = price;
               const draft = currentSession.data.draft;
 
               return ctx.reply(
                 `📋 ${toSansBold('𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸 𝗣𝗿𝗲𝘃𝗶𝗲𝘄')} 📋\n\n` +
                   `🔗 ${toSansBold('𝗟𝗶𝗻𝗸')}:\n${draft.targetLink}\n\n` +
                   `📝 ${toSansBold('𝗠𝗲𝘀𝘀𝗮𝗴𝗲 / 𝗜𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀')}:\n${draft.instructions}\n\n` +
+                  `💰 ${toSansBold('𝗔𝗽𝗽𝗿𝗼𝘃𝗲 𝗣𝗿𝗶𝗰𝗲')}: ${settings.currencySymbol}${price.toFixed(2)}\n\n` +
                   `Do you want to publish this review work?`,
                 Markup.inlineKeyboard([
                   [
-                    Markup.button.callback('✅ 𝗗𝗼𝗻𝗲', 'admin_confirm_task'),
+                    Markup.button.callback('✅ 𝗗𝗼𝗻𝗲 & 𝗣𝘂𝗯𝗹𝗶𝘀𝗵', 'admin_confirm_task'),
                     Markup.button.callback('❌ 𝗖𝗮𝗻𝗰𝗲𝗹', 'admin_cancel_task'),
                   ],
                 ])
@@ -957,7 +977,7 @@ class BotManager {
         // 3. ADMIN PANEL ACTIONS (fromId === adminId)
         // ========================================================================
         if (isAdmin(fromId)) {
-          // ADD WORK (2 STEPS: Link -> Message -> Done/Cancel)
+          // ADD WORK (3 STEPS: Link -> Message -> Approve Price -> Done/Cancel)
           if (norm.includes('add') || rawText.includes('ADD WORK') || rawText === STYLED_LABELS.ADD_WORK) {
             userStateMap.set(fromId, {
               step: 'ADMIN_ADD_LINK',
@@ -965,7 +985,7 @@ class BotManager {
             });
             return ctx.reply(
               `➕ ${toSansBold('𝗖𝗿𝗲𝗮𝘁𝗲 𝗡𝗲𝘄 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸')}\n\n` +
-                `📍 ${toSansBold('Step 1/2: Enter Review Link')}\n` +
+                `📍 ${toSansBold('Step 1/3: Enter Review Link')}\n` +
                 `(e.g., Google Maps link, Trustpilot URL, Play Store link):`,
               cancelInputKeyboard
             );
@@ -1104,11 +1124,13 @@ class BotManager {
           return ctx.reply('⚠️ Task session expired. Tap "➕ Add Review Work" again.', adminPanelKeyboard);
         }
 
+        const reward = Number(draft.rewardAmount) > 0 ? Number(draft.rewardAmount) : 10.0;
+
         const newTask = await Task.create({
           title: 'Review Task',
           targetLink: draft.targetLink,
           instructions: draft.instructions,
-          rewardAmount: 10.0,
+          rewardAmount: reward,
           maxCompletions: 100,
           createdBy: ctx.from.id,
           status: 'active',
@@ -1119,17 +1141,19 @@ class BotManager {
         await ctx.editMessageText(
           `✅ ${toSansBold('𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸 𝗣𝘂𝗯𝗹𝗶𝘀𝗵𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆!')}\n\n` +
             `🔗 Link: ${newTask.targetLink}\n` +
-            `📝 Message: ${newTask.instructions}\n\n` +
+            `📝 Message: ${newTask.instructions}\n` +
+            `💰 Approve Price: ${settings.currencySymbol}${newTask.rewardAmount.toFixed(2)}\n\n` +
             `📢 Broadcasting alert to all members now...`
         );
 
-        this.addLog('success', `Admin published new task (${newTask.targetLink})`);
+        this.addLog('success', `Admin published new task with reward ${settings.currencySymbol}${newTask.rewardAmount} (${newTask.targetLink})`);
 
-        // Broadcast to users (clean link + message only)
+        // Broadcast to users (clean link + message + price)
         const alertText =
           `🔥 ${toSansBold('𝗡𝗲𝘄 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲!')}\n\n` +
           `🔗 ${toSansBold('𝗟𝗶𝗻𝗸')}:\n${newTask.targetLink}\n\n` +
           `📝 ${toSansBold('𝗠𝗲𝘀𝘀𝗮𝗴𝗲')}:\n${newTask.instructions}\n\n` +
+          `💰 ${toSansBold('𝗥𝗲𝘄𝗮𝗿𝗱')}: ${settings.currencySymbol}${newTask.rewardAmount.toFixed(2)}\n\n` +
           `Tap ${toSansBold('🟢 📝 𝗥𝗘𝗩𝗜𝗘𝗪 𝗪𝗢𝗥𝗞 🟢')} in your menu to view and claim! 🏃‍♂️`;
 
         const allUsers = await User.find({ isBanned: false });

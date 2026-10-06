@@ -491,13 +491,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
         addMessage(activeUserId, {
           sender: 'bot',
-          text: `➕ ${toSansBold('𝗖𝗿𝗲𝗮𝘁𝗲 𝗡𝗲𝘄 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸')}\n\n📍 ${toSansBold('Step 1/2: Enter Review Link')}\n(e.g., Google Maps link, Trustpilot URL, Play Store link):`,
+          text: `➕ ${toSansBold('𝗖𝗿𝗲𝗮𝘁𝗲 𝗡𝗲𝘄 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸')}\n\n📍 ${toSansBold('Step 1/3: Enter Review Link')}\n(e.g., Google Maps link, Trustpilot URL, Play Store link):`,
         });
         return;
       }
 
       if (session.step === 'ADMIN_TASK_LINK') {
-        const link = text;
+        const link = text.trim();
         setUserSession((prev) => ({
           ...prev,
           [activeUserId]: {
@@ -508,18 +508,47 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
         addMessage(activeUserId, {
           sender: 'bot',
-          text: `📍 ${toSansBold('Step 2/2: Enter Task Message / Instructions')}\n\n(Type the review details and instructions that users should follow):`,
+          text: `📍 ${toSansBold('Step 2/3: Enter Task Message / Instructions')}\n\n(Type the review details and instructions that users should follow):`,
         });
         return;
       }
 
       if (session.step === 'ADMIN_TASK_MESSAGE') {
-        const instructions = text;
+        const instructions = text.trim();
+        setUserSession((prev) => ({
+          ...prev,
+          [activeUserId]: {
+            step: 'ADMIN_TASK_PRICE',
+            taskDraft: {
+              ...(prev[activeUserId]?.taskDraft || {}),
+              instructions,
+            },
+          },
+        }));
+
+        addMessage(activeUserId, {
+          sender: 'bot',
+          text: `📍 ${toSansBold('Step 3/3: Enter Approve Price / Reward Amount (₹)')}\n\n💰 ${toSansBold('টাকা / ব্যালেন্স')}: Type how much money will be credited to user's balance upon review approval (e.g. 5, 10, 15, 20):`,
+        });
+        return;
+      }
+
+      if (session.step === 'ADMIN_TASK_PRICE') {
+        const cleaned = text.replace(/[^0-9.]/g, '');
+        const price = parseFloat(cleaned);
+        if (isNaN(price) || price <= 0) {
+          addMessage(activeUserId, {
+            sender: 'bot',
+            text: `⚠️ Please enter a valid number for Approve Price (e.g. 10 or 15.50):`,
+          });
+          return;
+        }
+
         const draft = {
           title: 'Review Task',
           targetLink: session.taskDraft?.targetLink || 'https://maps.google.com',
-          instructions,
-          rewardAmount: 10.0,
+          instructions: session.taskDraft?.instructions || 'Leave positive review',
+          rewardAmount: price,
         };
 
         setUserSession((prev) => ({
@@ -527,16 +556,17 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
           [activeUserId]: { step: 'ADMIN_TASK_CONFIRM', taskDraft: draft },
         }));
 
-        // Show Confirmation Preview with ✅ 𝗗𝗼𝗻𝗲 or ❌ 𝗖𝗮𝗻𝗰𝗲𝗹
+        // Show Confirmation Preview with ✅ 𝗗𝗼𝗻𝗲 & 𝗣𝘂𝗯𝗹𝗶𝘀𝗵 or ❌ 𝗖𝗮𝗻𝗰𝗲𝗹
         addMessage(activeUserId, {
           sender: 'bot',
           text: `📋 ${toSansBold('𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸 𝗣𝗿𝗲𝘃𝗶𝗲𝘄')} 📋\n\n` +
             `🔗 ${toSansBold('𝗟𝗶𝗻𝗸')}:\n${draft.targetLink}\n\n` +
             `📝 ${toSansBold('𝗠𝗲𝘀𝘀𝗮𝗴𝗲 / 𝗜𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀')}:\n${draft.instructions}\n\n` +
+            `💰 ${toSansBold('𝗔𝗽𝗽𝗿𝗼𝘃𝗲 𝗣𝗿𝗶𝗰𝗲')}: ${settings.currencySymbol}${price.toFixed(2)}\n\n` +
             `Do you want to publish this review work?`,
           inlineButtons: [
             [
-              { text: '✅ 𝗗𝗼𝗻𝗲', callbackData: 'admin_confirm_task' },
+              { text: '✅ 𝗗𝗼𝗻𝗲 & 𝗣𝘂𝗯𝗹𝗶𝘀𝗵', callbackData: 'admin_confirm_task' },
               { text: '❌ 𝗖𝗮𝗻𝗰𝗲𝗹', callbackData: 'admin_cancel_task' },
             ],
           ],
@@ -823,8 +853,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         `🔥 ${toSansBold('𝗡𝗲𝘄 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲!')}\n` +
         `${toSansBold('𝗖𝗼𝗺𝗽𝗹𝗲𝘁𝗲 𝗶𝘁 𝗳𝗮𝘀𝘁 𝗯𝗲𝗳𝗼𝗿𝗲 𝗼𝘁𝗵𝗲𝗿𝘀 𝗴𝗿𝗮𝗯 𝗶𝘁! 🏃‍♂️')}\n\n` +
         `📌 ${toSansBold(newTask.title)}\n` +
-        `💰 ${toSansBold('𝗥𝗲𝘄𝗮𝗿𝗱')}: $${newTask.rewardAmount.toFixed(2)}\n\n` +
-        `Tap ${toSansBold('📝 𝗥𝗲𝘃𝗶𝗲𝘄 𝗪𝗼𝗿𝗸')} in your menu to view and claim!`;
+        `💰 ${toSansBold('𝗥𝗲𝘄𝗮𝗿𝗱')}: ${settings.currencySymbol}${newTask.rewardAmount.toFixed(2)}\n\n` +
+        `Tap ${toSansBold('🟢 📝 𝗥𝗘𝗩𝗜𝗘𝗪 𝗪𝗢𝗥𝗞 🟢')} in your menu to view and claim!`;
 
       broadcastMessage(broadcastAlert);
       return;
